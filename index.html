@@ -517,23 +517,48 @@
         <span class="logo-icon" style="font-size:28px"><i class="ti ti-wand"></i></span>
         <span style="font-size:22px;font-weight:600">Genova</span>
       </div>
-      <p class="auth-sub">Décris ton app. On la construit. Elle se déploie toute seule.</p>
-      <div class="auth-tabs">
-        <button class="auth-tab active" id="authTabLogin" onclick="setAuthMode('login')">Connexion</button>
-        <button class="auth-tab" id="authTabSignup" onclick="setAuthMode('signup')">Inscription</button>
+      <p class="auth-sub" id="authSubtitle">Décris ton app. On la construit. Elle se déploie toute seule.</p>
+
+      <div id="authFormView">
+        <div class="auth-tabs">
+          <button class="auth-tab active" id="authTabLogin" onclick="setAuthMode('login')">Connexion</button>
+          <button class="auth-tab" id="authTabSignup" onclick="setAuthMode('signup')">Inscription</button>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Email</label>
+          <input type="email" class="form-input" id="authEmail" placeholder="toi@exemple.com" autocomplete="email" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Mot de passe</label>
+          <input type="password" class="form-input" id="authPassword" placeholder="••••••••" autocomplete="current-password" />
+        </div>
+        <div class="auth-error" id="authError"></div>
+        <button class="btn-create" style="width:100%;justify-content:center;padding:10px" id="authSubmit" onclick="submitAuth()">
+          Se connecter
+        </button>
       </div>
-      <div class="form-group">
-        <label class="form-label">Email</label>
-        <input type="email" class="form-input" id="authEmail" placeholder="toi@exemple.com" />
+
+      <div id="otpFormView" class="otp-form hidden">
+        <div class="otp-icon"><i class="ti ti-mail-code"></i></div>
+        <div class="otp-title">Confirme ton email</div>
+        <p class="otp-text">Entre le code à 6 chiffres envoyé à <strong id="otpEmailLabel"></strong>.</p>
+        <input
+          type="text"
+          inputmode="numeric"
+          pattern="[0-9]*"
+          maxlength="6"
+          class="form-input otp-input"
+          id="otpCode"
+          placeholder="000000"
+          autocomplete="one-time-code"
+        />
+        <div class="auth-error" id="otpError"></div>
+        <button class="btn-create" style="width:100%;justify-content:center;padding:10px" id="otpSubmit" onclick="verifyOtpCode()">
+          Vérifier le code
+        </button>
+        <button class="auth-link-btn" onclick="resendOtpCode()" id="otpResend">Renvoyer le code</button>
+        <button class="auth-link-btn muted" onclick="backToAuthForm()">Changer d’email</button>
       </div>
-      <div class="form-group">
-        <label class="form-label">Mot de passe</label>
-        <input type="password" class="form-input" id="authPassword" placeholder="••••••••" />
-      </div>
-      <div class="auth-error" id="authError"></div>
-      <button class="btn-create" style="width:100%;justify-content:center;padding:10px" id="authSubmit" onclick="submitAuth()">
-        Se connecter
-      </button>
     </div>
   </div>
 
