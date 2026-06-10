@@ -42,9 +42,12 @@ async function initAuth() {
 function setAuthMode(mode) {
   authMode = mode
   showAuthForm()
+  const signupFields = document.getElementById('signupProfileFields')
+  if (signupFields) signupFields.classList.toggle('hidden', mode !== 'signup')
   document.getElementById('authTabLogin').classList.toggle('active', mode === 'login')
   document.getElementById('authTabSignup').classList.toggle('active', mode === 'signup')
   document.getElementById('authSubmit').textContent = mode === 'login' ? 'Se connecter' : 'Créer mon compte'
+  document.getElementById('authPassword').autocomplete = mode === 'login' ? 'current-password' : 'new-password'
   document.getElementById('authError').style.color = 'var(--red)'
   document.getElementById('authError').textContent = ''
 }
@@ -106,7 +109,23 @@ async function submitAuth() {
   try {
     let result
     if (authMode === 'signup') {
-      result = await db.auth.signUp({ email, password })
+      const firstName = document.getElementById('signupFirstName')?.value.trim() || ''
+      const lastName = document.getElementById('signupLastName')?.value.trim() || ''
+      const company = document.getElementById('signupCompany')?.value.trim() || ''
+      const displayName = [firstName, lastName].filter(Boolean).join(' ')
+
+      result = await db.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            first_name: firstName,
+            last_name: lastName,
+            company,
+            display_name: displayName || email
+          }
+        }
+      })
       if (result.error) {
         errorEl.style.color = 'var(--red)'
         errorEl.textContent = traduireErreur(result.error.message)
@@ -239,11 +258,33 @@ async function signOut() {
   showToast('Déconnecté')
 }
 
-function onSignedIn() {
+async function onSignedIn() {
   document.getElementById('authOverlay').classList.add('hidden')
-  const initials = (currentUser.email || '??').slice(0, 2).toUpperCase()
+  let initials = getInitialsFromUser(currentUser)
+
+  const { data: profile } = await db
+    .from('profiles')
+    .select('first_name,last_name,display_name')
+    .eq('id', currentUser.id)
+    .maybeSingle()
+
+  if (profile) initials = getInitialsFromProfile(profile) || initials
   document.getElementById('avatarBtn').textContent = initials
   loadProjects()
+}
+
+function getInitialsFromUser(user) {
+  const meta = user?.user_metadata || {}
+  const fromName = [meta.first_name, meta.last_name].filter(Boolean).map(v => String(v).trim()[0]).join('')
+  if (fromName) return fromName.toUpperCase().slice(0, 2)
+  return (user?.email || '??').slice(0, 2).toUpperCase()
+}
+
+function getInitialsFromProfile(profile) {
+  const fromNames = [profile.first_name, profile.last_name].filter(Boolean).map(v => String(v).trim()[0]).join('')
+  if (fromNames) return fromNames.toUpperCase().slice(0, 2)
+  if (profile.display_name) return String(profile.display_name).slice(0, 2).toUpperCase()
+  return ''
 }
 
 // ============================================
@@ -304,15 +345,8 @@ function setCurrentProject(p) {
   document.getElementById('projectName').textContent = p.name
   const badge = document.querySelector('.project-badge')
   const labels = {
-    deployed: 'Déployé',
-    building: 'En cours',
-    planning: 'Planification',
-    coding: 'Code',
-    capturing: 'Capture',
-    analyzing: 'Vision',
-    deploying: 'Déploiement',
-    draft: 'Brouillon',
-    failed: 'Échec'
+    deployed: 'Déployé', building: 'En cours', planning: 'Planification', coding: 'Code',
+    capturing: 'Capture', analyzing: 'Vision', deploying: 'Déploiement', draft: 'Brouillon', failed: 'Échec'
   }
   badge.textContent = labels[p.status] || p.status
   badge.className = 'project-badge' + (p.status === 'deployed' ? ' deployed' : '')
@@ -373,65 +407,34 @@ function renderIterations(iterations) {
 
   list.innerHTML = iterations.map((it, idx) => `
     <div class="iteration-card ${idx === 0 ? 'active-iter' : ''}">
-      <div class="iter-meta">
-        <span class="iter-badge ${idx === 0 ? 'current' : ''}">${idx === 0 ? 'Actuelle' : 'v' + it.version}</span>
-        <span class="iter-time">${formatDate(it.created_at)}</span>
-      </div>
+      <div class="iter-meta"><span class="iter-badge ${idx === 0 ? 'current' : ''}">${idx === 0 ? 'Actuelle' : 'v' + it.version}</span><span class="iter-time">${formatDate(it.created_at)}</span></div>
       <div class="iter-prompt">"${escapeHtml(it.prompt)}"</div>
-      <div class="iter-result">
-        <span class="result-ok"><i class="ti ti-check"></i> ${it.files_changed || 0} fichiers modifiés</span>
-        ${it.visual_score ? `<span class="iter-score"><i class="ti ti-eye"></i> Score visuel : ${Math.round(it.visual_score)}%</span>` : ''}
-      </div>
+      <div class="iter-result"><span class="result-ok"><i class="ti ti-check"></i> ${it.files_changed || 0} fichiers modifiés</span>${it.visual_score ? `<span class="iter-score"><i class="ti ti-eye"></i> Score visuel : ${Math.round(it.visual_score)}%</span>` : ''}</div>
     </div>`).join('')
 }
 
 // ============================================
 // PIPELINE DE GÉNÉRATION
-// (simulation — le backend agent viendra remplacer ça)
 // ============================================
 
 const steps = ['plan', 'code', 'capture', 'vision', 'deploy']
-const stepLabels = [
-  'Planification des composants...',
-  'Génération du code React...',
-  'Capture du rendu visuel...',
-  'Analyse visuelle avec Claude...',
-  'Déploiement sur Vercel...'
-]
+const stepLabels = ['Planification des composants...', 'Génération du code React...', 'Capture du rendu visuel...', 'Analyse visuelle avec Claude...', 'Déploiement sur Vercel...']
 const stepStatuses = ['planning', 'coding', 'capturing', 'analyzing', 'deploying']
 let genRunning = false
 
 async function startGeneration() {
   if (genRunning) return
-  if (!currentProject) {
-    showToast('Crée ou sélectionne un projet d’abord')
-    return
-  }
+  if (!currentProject) { showToast('Crée ou sélectionne un projet d’abord'); return }
   const prompt = document.getElementById('promptInput').value.trim()
-  if (!prompt) {
-    showToast('Décris ton app avant de générer')
-    return
-  }
+  if (!prompt) { showToast('Décris ton app avant de générer'); return }
 
   genRunning = true
   const btn = document.getElementById('generateBtn')
   btn.classList.add('running')
   btn.innerHTML = '<i class="ti ti-loader"></i> Génération...'
 
-  // Crée l'itération en base
   const nextVersion = await getNextVersion(currentProject.id)
-  const { data: iteration, error } = await db
-    .from('iterations')
-    .insert({
-      project_id: currentProject.id,
-      owner_id: currentUser.id,
-      version: nextVersion,
-      prompt: prompt,
-      status: 'pending'
-    })
-    .select()
-    .single()
-
+  const { data: iteration, error } = await db.from('iterations').insert({ project_id: currentProject.id, owner_id: currentUser.id, version: nextVersion, prompt, status: 'pending' }).select().single()
   if (error) {
     showToast('Erreur : impossible de créer l’itération')
     console.error(error)
@@ -441,37 +444,22 @@ async function startGeneration() {
     return
   }
 
-  await db.from('projects')
-    .update({ status: 'planning', initial_prompt: currentProject.initial_prompt || prompt })
-    .eq('id', currentProject.id)
+  await db.from('projects').update({ status: 'planning', initial_prompt: currentProject.initial_prompt || prompt }).eq('id', currentProject.id)
 
   const dot = document.getElementById('pipelineDot')
   const label = document.getElementById('pipelineLabel')
   const iterEl = document.getElementById('pipelineIter')
   dot.className = 'pipeline-status-dot running'
   iterEl.textContent = `Itération #${nextVersion}`
-
-  steps.forEach(s => {
-    const el = document.getElementById('step-' + s)
-    if (el) el.dataset.state = 'idle'
-  })
+  steps.forEach(s => { const el = document.getElementById('step-' + s); if (el) el.dataset.state = 'idle' })
 
   let i = 0
   async function runStep() {
-    if (i > 0) {
-      const prev = document.getElementById('step-' + steps[i - 1])
-      if (prev) prev.dataset.state = 'done'
-    }
+    if (i > 0) { const prev = document.getElementById('step-' + steps[i - 1]); if (prev) prev.dataset.state = 'done' }
     if (i >= steps.length) {
-      // Fin du pipeline : score visuel simulé + statuts finaux
       const score = 70 + Math.round(Math.random() * 28)
-      await db.from('iterations')
-        .update({ status: 'done', visual_score: score, files_changed: 2 + Math.floor(Math.random() * 4), completed_at: new Date().toISOString() })
-        .eq('id', iteration.id)
-      await db.from('projects')
-        .update({ status: 'deployed' })
-        .eq('id', currentProject.id)
-
+      await db.from('iterations').update({ status: 'done', visual_score: score, files_changed: 2 + Math.floor(Math.random() * 4), completed_at: new Date().toISOString() }).eq('id', iteration.id)
+      await db.from('projects').update({ status: 'deployed' }).eq('id', currentProject.id)
       label.textContent = 'Déployé avec succès ✓'
       dot.className = 'pipeline-status-dot done'
       btn.classList.remove('running')
@@ -498,12 +486,7 @@ async function startGeneration() {
 }
 
 async function getNextVersion(projectId) {
-  const { data } = await db
-    .from('iterations')
-    .select('version')
-    .eq('project_id', projectId)
-    .order('version', { ascending: false })
-    .limit(1)
+  const { data } = await db.from('iterations').select('version').eq('project_id', projectId).order('version', { ascending: false }).limit(1)
   return data && data.length > 0 ? data[0].version + 1 : 1
 }
 
@@ -511,102 +494,22 @@ async function getNextVersion(projectId) {
 // UI — onglets, modal, helpers
 // ============================================
 
-function switchTab(el) {
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'))
-  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'))
-  el.classList.add('active')
-  document.getElementById('tab-' + el.dataset.tab).classList.add('active')
-  if (el.dataset.tab === 'iterations' && currentProject) loadIterations(currentProject.id)
-}
-
-function switchPreview(el, type) {
-  document.querySelectorAll('.preview-tab').forEach(t => t.classList.remove('active'))
-  el.classList.add('active')
-  document.getElementById('previewWeb').classList.toggle('active', type === 'web')
-  document.getElementById('previewMobile').classList.toggle('active', type === 'mobile')
-}
-
-function selectFile(el, name) {
-  document.querySelectorAll('.file-item').forEach(f => f.classList.remove('active'))
-  el.classList.add('active')
-  document.getElementById('codeFileName').innerHTML = `<i class="ti ti-file-type-tsx"></i> ${name}`
-}
-
-function setViewport(el, width) {
-  document.querySelectorAll('.vp-btn').forEach(b => b.classList.remove('active'))
-  el.classList.add('active')
-  const app = document.querySelector('#fullpreviewFrame .mock-fullscreen-app')
-  if (app) {
-    if (width === '390px') { app.style.maxWidth = '390px'; app.style.height = '700px' }
-    else if (width === '768px') { app.style.maxWidth = '768px'; app.style.height = '560px' }
-    else { app.style.maxWidth = '900px'; app.style.height = '500px' }
-  }
-}
-
-function openNewProject() {
-  document.getElementById('newProjectModal').classList.add('open')
-  setTimeout(() => document.getElementById('newProjectName').focus(), 100)
-}
-function closeNewProject() {
-  document.getElementById('newProjectModal').classList.remove('open')
-}
-function selectType(el) {
-  document.querySelectorAll('.type-option').forEach(t => t.classList.remove('active-type'))
-  el.classList.add('active-type')
-}
-
-function insertChip(text) {
-  const ta = document.getElementById('promptInput')
-  ta.value = ta.value.trimEnd() + (ta.value ? ', ' : '') + text
-  ta.focus()
-}
-
-function redeploy() {
-  const btn = document.querySelector('.btn-redeploy')
-  if (!btn) return
-  btn.innerHTML = '<i class="ti ti-loader"></i> Déploiement...'
-  btn.disabled = true
-  setTimeout(() => {
-    btn.innerHTML = '<i class="ti ti-rocket"></i> Redéployer'
-    btn.disabled = false
-    showToast('🚀 Redéploiement réussi')
-  }, 2800)
-}
-
+function switchTab(el) { document.querySelectorAll('.tab').forEach(t => t.classList.remove('active')); document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active')); el.classList.add('active'); document.getElementById('tab-' + el.dataset.tab).classList.add('active'); if (el.dataset.tab === 'iterations' && currentProject) loadIterations(currentProject.id) }
+function switchPreview(el, type) { document.querySelectorAll('.preview-tab').forEach(t => t.classList.remove('active')); el.classList.add('active'); document.getElementById('previewWeb').classList.toggle('active', type === 'web'); document.getElementById('previewMobile').classList.toggle('active', type === 'mobile') }
+function selectFile(el, name) { document.querySelectorAll('.file-item').forEach(f => f.classList.remove('active')); el.classList.add('active'); document.getElementById('codeFileName').innerHTML = `<i class="ti ti-file-type-tsx"></i> ${name}` }
+function setViewport(el, width) { document.querySelectorAll('.vp-btn').forEach(b => b.classList.remove('active')); el.classList.add('active'); const app = document.querySelector('#fullpreviewFrame .mock-fullscreen-app'); if (app) { if (width === '390px') { app.style.maxWidth = '390px'; app.style.height = '700px' } else if (width === '768px') { app.style.maxWidth = '768px'; app.style.height = '560px' } else { app.style.maxWidth = '900px'; app.style.height = '500px' } } }
+function openNewProject() { document.getElementById('newProjectModal').classList.add('open'); setTimeout(() => document.getElementById('newProjectName').focus(), 100) }
+function closeNewProject() { document.getElementById('newProjectModal').classList.remove('open') }
+function selectType(el) { document.querySelectorAll('.type-option').forEach(t => t.classList.remove('active-type')); el.classList.add('active-type') }
+function insertChip(text) { const ta = document.getElementById('promptInput'); ta.value = ta.value.trimEnd() + (ta.value ? ', ' : '') + text; ta.focus() }
+function redeploy() { const btn = document.querySelector('.btn-redeploy'); if (!btn) return; btn.innerHTML = '<i class="ti ti-loader"></i> Déploiement...'; btn.disabled = true; setTimeout(() => { btn.innerHTML = '<i class="ti ti-rocket"></i> Redéployer'; btn.disabled = false; showToast('🚀 Redéploiement réussi') }, 2800) }
 function restoreIter() { showToast('Restauration disponible avec le backend agent') }
-
-function showToast(msg) {
-  const t = document.getElementById('toast')
-  t.textContent = msg
-  t.classList.add('show')
-  setTimeout(() => t.classList.remove('show'), 3000)
-}
-
-function copyUrl() {
-  const url = currentProject && currentProject.deploy_url
-  if (!url) { showToast('Pas encore d’URL de déploiement'); return }
-  navigator.clipboard?.writeText(url).catch(() => {})
-  showToast('URL copiée !')
-}
-function openUrl() {
-  const url = currentProject && currentProject.deploy_url
-  if (url) window.open(url, '_blank')
-  else showToast('Pas encore d’URL de déploiement')
-}
+function showToast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 3000) }
+function copyUrl() { const url = currentProject && currentProject.deploy_url; if (!url) { showToast('Pas encore d’URL de déploiement'); return } navigator.clipboard?.writeText(url).catch(() => {}); showToast('URL copiée !') }
+function openUrl() { const url = currentProject && currentProject.deploy_url; if (url) window.open(url, '_blank'); else showToast('Pas encore d’URL de déploiement') }
 function toggleFullscreen() { showToast('Plein écran non disponible en aperçu') }
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
-}
-
-function formatDate(iso) {
-  const d = new Date(iso)
-  const diff = (Date.now() - d.getTime()) / 1000
-  if (diff < 60) return 'À l’instant'
-  if (diff < 3600) return `Il y a ${Math.floor(diff / 60)} min`
-  if (diff < 86400) return `Il y a ${Math.floor(diff / 3600)} h`
-  return d.toLocaleDateString('fr-CA')
-}
+function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])) }
+function formatDate(iso) { const d = new Date(iso); const diff = (Date.now() - d.getTime()) / 1000; if (diff < 60) return 'À l’instant'; if (diff < 3600) return `Il y a ${Math.floor(diff / 60)} min`; if (diff < 86400) return `Il y a ${Math.floor(diff / 3600)} h`; return d.toLocaleDateString('fr-CA') }
 
 // ============================================
 // INIT
@@ -616,12 +519,8 @@ document.addEventListener('keydown', e => {
   const overlay = document.getElementById('authOverlay')
   const authVisible = overlay && !overlay.classList.contains('hidden')
   const otpVisible = document.getElementById('otpFormView') && !document.getElementById('otpFormView').classList.contains('hidden')
-
   if (e.key === 'Escape') closeNewProject()
-  if (e.key === 'Enter' && authVisible) {
-    if (otpVisible) verifyOtpCode()
-    else submitAuth()
-  }
+  if (e.key === 'Enter' && authVisible) { if (otpVisible) verifyOtpCode(); else submitAuth() }
 })
 
 document.addEventListener('input', e => {
@@ -631,8 +530,7 @@ document.addEventListener('input', e => {
   }
 })
 
-document.getElementById('newProjectModal').addEventListener('click', e => {
-  if (e.target === e.currentTarget) closeNewProject()
-})
+document.getElementById('newProjectModal').addEventListener('click', e => { if (e.target === e.currentTarget) closeNewProject() })
 
 initAuth()
+setAuthMode('login')
