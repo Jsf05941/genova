@@ -1,1 +1,543 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Genova — Génère ton app</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
 
+  <div class="app-shell">
+
+    <!-- TOPBAR -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <div class="logo">
+          <span class="logo-icon"><i class="ti ti-wand"></i></span>
+          <span class="logo-text">Genova</span>
+        </div>
+        <div class="topbar-divider"></div>
+        <span class="project-name" id="projectName">SaaS dashboard</span>
+        <span class="project-badge deployed">Déployé</span>
+      </div>
+      <div class="topbar-center">
+        <div class="url-bar">
+          <i class="ti ti-lock"></i>
+          <span id="deployUrl">saas-dashboard-xyz.vercel.app</span>
+          <button class="url-copy" onclick="copyUrl()" title="Copier l'URL"><i class="ti ti-copy"></i></button>
+          <button class="url-open" onclick="openUrl()" title="Ouvrir"><i class="ti ti-external-link"></i></button>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <button class="btn-ghost"><i class="ti ti-bell"></i></button>
+        <button class="btn-ghost"><i class="ti ti-settings"></i></button>
+        <button class="btn-ghost" onclick="signOut()" title="Se déconnecter"><i class="ti ti-logout"></i></button>
+        <div class="avatar-btn" id="avatarBtn">··</div>
+      </div>
+    </header>
+
+    <div class="app-body">
+
+      <!-- SIDEBAR -->
+      <aside class="sidebar">
+        <button class="new-project-btn" onclick="openNewProject()">
+          <i class="ti ti-plus"></i>
+          Nouveau projet
+        </button>
+
+        <div class="nav-section-label">Récents</div>
+        <nav class="project-list" id="projectListRecent">
+          <div class="proj-empty" id="projEmpty">Aucun projet — crée le premier !</div>
+        </nav>
+
+        <div class="nav-section-label" style="margin-top:8px" id="favLabel">Favoris</div>
+        <nav class="project-list" id="projectListFav"></nav>
+
+        <div class="sidebar-footer">
+          <button class="btn-sidebar-footer"><i class="ti ti-help-circle"></i> Aide</button>
+          <button class="btn-sidebar-footer"><i class="ti ti-settings"></i> Paramètres</button>
+        </div>
+      </aside>
+
+      <!-- MAIN AREA -->
+      <main class="main-area">
+
+        <!-- TABS -->
+        <div class="tabs-bar">
+          <button class="tab active" data-tab="generate" onclick="switchTab(this)">
+            <i class="ti ti-wand"></i> Générer
+          </button>
+          <button class="tab" data-tab="code" onclick="switchTab(this)">
+            <i class="ti ti-code"></i> Code
+          </button>
+          <button class="tab" data-tab="preview" onclick="switchTab(this)">
+            <i class="ti ti-eye"></i> Prévisualisation
+          </button>
+          <button class="tab" data-tab="iterations" onclick="switchTab(this)">
+            <i class="ti ti-history"></i> Itérations
+            <span class="tab-badge">3</span>
+          </button>
+          <button class="tab" data-tab="deploy" onclick="switchTab(this)">
+            <i class="ti ti-rocket"></i> Déploiement
+          </button>
+        </div>
+
+        <!-- TAB: GENERATE -->
+        <div class="tab-content active" id="tab-generate">
+          <div class="generate-layout">
+
+            <div class="generate-left">
+              <div class="prompt-section">
+                <div class="prompt-header">
+                  <span class="prompt-label">Décris ton app</span>
+                  <div class="prompt-controls">
+                    <select class="select-type" id="appType">
+                      <option value="web">🌐 Web (Next.js)</option>
+                      <option value="mobile">📱 Mobile (Expo)</option>
+                      <option value="fullstack">⚡ Full-stack</option>
+                    </select>
+                  </div>
+                </div>
+                <textarea
+                  id="promptInput"
+                  class="prompt-textarea"
+                  placeholder="Ex: Un dashboard SaaS avec auth, sidebar, graphiques de revenus, tableau d'utilisateurs et mode sombre..."
+                  rows="5"
+                >Un dashboard SaaS avec authentification, sidebar de navigation, graphiques de revenus mensuels, tableau des utilisateurs récents et support du mode sombre.</textarea>
+                <div class="prompt-actions">
+                  <div class="prompt-chips">
+                    <button class="chip" onclick="insertChip('Ajouter auth Supabase')">+ Auth</button>
+                    <button class="chip" onclick="insertChip('Ajouter mode sombre')">+ Dark mode</button>
+                    <button class="chip" onclick="insertChip('Ajouter une API REST')">+ API REST</button>
+                    <button class="chip" onclick="insertChip('Ajouter des graphiques')">+ Charts</button>
+                  </div>
+                  <button class="generate-btn" id="generateBtn" onclick="startGeneration()">
+                    <i class="ti ti-wand"></i>
+                    Générer
+                  </button>
+                </div>
+              </div>
+
+              <!-- PIPELINE STATUS -->
+              <div class="pipeline-section" id="pipelineSection">
+                <div class="pipeline-header">
+                  <div class="pipeline-status-dot" id="pipelineDot"></div>
+                  <span class="pipeline-label" id="pipelineLabel">Prêt à générer</span>
+                  <span class="pipeline-iter" id="pipelineIter"></span>
+                </div>
+                <div class="pipeline-steps">
+                  <div class="pipeline-step" id="step-plan" data-state="idle">
+                    <div class="step-icon"><i class="ti ti-sitemap"></i></div>
+                    <div class="step-body">
+                      <div class="step-name">Planification</div>
+                      <div class="step-desc">Structure & routes</div>
+                    </div>
+                  </div>
+                  <div class="pipeline-arrow"><i class="ti ti-arrow-right"></i></div>
+                  <div class="pipeline-step" id="step-code" data-state="idle">
+                    <div class="step-icon"><i class="ti ti-code"></i></div>
+                    <div class="step-body">
+                      <div class="step-name">Code</div>
+                      <div class="step-desc">React / Next.js</div>
+                    </div>
+                  </div>
+                  <div class="pipeline-arrow"><i class="ti ti-arrow-right"></i></div>
+                  <div class="pipeline-step" id="step-capture" data-state="idle">
+                    <div class="step-icon"><i class="ti ti-camera"></i></div>
+                    <div class="step-body">
+                      <div class="step-name">Capture</div>
+                      <div class="step-desc">Screenshot rendu</div>
+                    </div>
+                  </div>
+                  <div class="pipeline-arrow"><i class="ti ti-arrow-right"></i></div>
+                  <div class="pipeline-step" id="step-vision" data-state="idle">
+                    <div class="step-icon"><i class="ti ti-eye"></i></div>
+                    <div class="step-body">
+                      <div class="step-name">Vision</div>
+                      <div class="step-desc">Analyse visuelle</div>
+                    </div>
+                  </div>
+                  <div class="pipeline-arrow"><i class="ti ti-arrow-right"></i></div>
+                  <div class="pipeline-step" id="step-deploy" data-state="idle">
+                    <div class="step-icon"><i class="ti ti-rocket"></i></div>
+                    <div class="step-body">
+                      <div class="step-name">Déploiement</div>
+                      <div class="step-desc">Vercel auto</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="generate-right">
+              <div class="preview-panel">
+                <div class="preview-panel-header">
+                  <div class="preview-tabs">
+                    <button class="preview-tab active" onclick="switchPreview(this, 'web')"><i class="ti ti-browser"></i> Web</button>
+                    <button class="preview-tab" onclick="switchPreview(this, 'mobile')"><i class="ti ti-device-mobile"></i> Mobile</button>
+                  </div>
+                  <div class="preview-actions">
+                    <button class="btn-icon" title="Plein écran" onclick="toggleFullscreen()"><i class="ti ti-maximize"></i></button>
+                    <button class="btn-icon" title="Rafraîchir"><i class="ti ti-refresh"></i></button>
+                  </div>
+                </div>
+                <div class="preview-body">
+                  <div class="preview-web active" id="previewWeb">
+                    <div class="browser-frame">
+                      <div class="browser-chrome">
+                        <div class="browser-dots">
+                          <span class="bdot red"></span>
+                          <span class="bdot amber"></span>
+                          <span class="bdot green"></span>
+                        </div>
+                        <div class="browser-url-bar">
+                          <i class="ti ti-lock" style="font-size:11px"></i>
+                          saas-dashboard-xyz.vercel.app
+                        </div>
+                      </div>
+                      <div class="browser-content-area">
+                        <div class="mock-app">
+                          <div class="mock-sidebar">
+                            <div class="mock-logo-bar"></div>
+                            <div class="mock-nav-item active-nav"></div>
+                            <div class="mock-nav-item"></div>
+                            <div class="mock-nav-item"></div>
+                            <div class="mock-nav-item"></div>
+                          </div>
+                          <div class="mock-content">
+                            <div class="mock-topbar-app"></div>
+                            <div class="mock-cards-row">
+                              <div class="mock-card purple"></div>
+                              <div class="mock-card teal"></div>
+                              <div class="mock-card amber"></div>
+                            </div>
+                            <div class="mock-chart-area"></div>
+                            <div class="mock-table">
+                              <div class="mock-table-row header-row"></div>
+                              <div class="mock-table-row"></div>
+                              <div class="mock-table-row"></div>
+                              <div class="mock-table-row"></div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="preview-mobile" id="previewMobile">
+                    <div class="phone-frame">
+                      <div class="phone-notch-bar">
+                        <div class="phone-notch"></div>
+                      </div>
+                      <div class="phone-content-area">
+                        <div class="mock-mobile-header"></div>
+                        <div class="mock-mobile-cards">
+                          <div class="mock-mobile-card purple"></div>
+                          <div class="mock-mobile-card teal"></div>
+                        </div>
+                        <div class="mock-mobile-chart"></div>
+                        <div class="mock-mobile-list">
+                          <div class="mock-mobile-row"></div>
+                          <div class="mock-mobile-row"></div>
+                          <div class="mock-mobile-row"></div>
+                        </div>
+                      </div>
+                      <div class="phone-home-bar"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB: CODE -->
+        <div class="tab-content" id="tab-code">
+          <div class="code-layout">
+            <div class="file-tree">
+              <div class="file-tree-header">Fichiers</div>
+              <div class="file-item folder open"><i class="ti ti-folder"></i> src</div>
+              <div class="file-item active" style="padding-left:28px" onclick="selectFile(this, 'Dashboard.tsx')"><i class="ti ti-file-type-tsx"></i> Dashboard.tsx</div>
+              <div class="file-item" style="padding-left:28px" onclick="selectFile(this, 'Sidebar.tsx')"><i class="ti ti-file-type-tsx"></i> Sidebar.tsx</div>
+              <div class="file-item" style="padding-left:28px" onclick="selectFile(this, 'AuthPage.tsx')"><i class="ti ti-file-type-tsx"></i> AuthPage.tsx</div>
+              <div class="file-item" style="padding-left:28px" onclick="selectFile(this, 'api/revenue.ts')"><i class="ti ti-file-type-ts"></i> api/revenue.ts</div>
+              <div class="file-item"><i class="ti ti-file"></i> package.json</div>
+              <div class="file-item"><i class="ti ti-file"></i> tailwind.config.js</div>
+            </div>
+            <div class="code-editor">
+              <div class="code-editor-header">
+                <span class="code-file-name" id="codeFileName"><i class="ti ti-file-type-tsx"></i> Dashboard.tsx</span>
+                <div class="code-actions">
+                  <button class="btn-ghost small"><i class="ti ti-copy"></i> Copier</button>
+                  <button class="btn-ghost small"><i class="ti ti-download"></i> Télécharger</button>
+                </div>
+              </div>
+              <pre class="code-block" id="codeBlock"><code><span class="token-keyword">import</span> <span class="token-punctuation">{</span> useState <span class="token-punctuation">}</span> <span class="token-keyword">from</span> <span class="token-string">"react"</span>
+<span class="token-keyword">import</span> Sidebar <span class="token-keyword">from</span> <span class="token-string">"./Sidebar"</span>
+<span class="token-keyword">import</span> RevenueChart <span class="token-keyword">from</span> <span class="token-string">"./RevenueChart"</span>
+<span class="token-keyword">import</span> UsersTable <span class="token-keyword">from</span> <span class="token-string">"./UsersTable"</span>
+
+<span class="token-keyword">export default function</span> <span class="token-function">Dashboard</span><span class="token-punctuation">()</span> <span class="token-punctuation">{</span>
+  <span class="token-keyword">const</span> <span class="token-punctuation">[</span>darkMode, setDarkMode<span class="token-punctuation">]</span> = useState<span class="token-punctuation">(</span><span class="token-boolean">false</span><span class="token-punctuation">)</span>
+
+  <span class="token-keyword">return</span> <span class="token-punctuation">(</span>
+    <span class="token-tag">&lt;div</span> <span class="token-attr">className</span>=<span class="token-string">{`app ${darkMode ? "dark" : ""}`</span><span class="token-punctuation">}</span><span class="token-tag">&gt;</span>
+      <span class="token-tag">&lt;Sidebar /&gt;</span>
+      <span class="token-tag">&lt;main</span> <span class="token-attr">className</span>=<span class="token-string">"main-content"</span><span class="token-tag">&gt;</span>
+        <span class="token-tag">&lt;header</span> <span class="token-attr">className</span>=<span class="token-string">"topbar"</span><span class="token-tag">&gt;</span>
+          <span class="token-tag">&lt;h1&gt;</span>Dashboard<span class="token-tag">&lt;/h1&gt;</span>
+          <span class="token-tag">&lt;button</span> <span class="token-attr">onClick</span>=<span class="token-punctuation">{()</span> =&gt; setDarkMode(!darkMode)}<span class="token-tag">&gt;</span>
+            Mode sombre
+          <span class="token-tag">&lt;/button&gt;</span>
+        <span class="token-tag">&lt;/header&gt;</span>
+        <span class="token-tag">&lt;RevenueChart /&gt;</span>
+        <span class="token-tag">&lt;UsersTable /&gt;</span>
+      <span class="token-tag">&lt;/main&gt;</span>
+    <span class="token-tag">&lt;/div&gt;</span>
+  <span class="token-punctuation">)</span>
+<span class="token-punctuation">}</span></code></pre>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB: PREVIEW -->
+        <div class="tab-content" id="tab-preview">
+          <div class="fullpreview-area">
+            <div class="fullpreview-toolbar">
+              <div class="viewport-btns">
+                <button class="vp-btn active" onclick="setViewport(this, '100%')"><i class="ti ti-layout-distribute-horizontal"></i> Desktop</button>
+                <button class="vp-btn" onclick="setViewport(this, '768px')"><i class="ti ti-device-tablet"></i> Tablette</button>
+                <button class="vp-btn" onclick="setViewport(this, '390px')"><i class="ti ti-device-mobile"></i> Mobile</button>
+              </div>
+              <div class="preview-url-bar">
+                <i class="ti ti-lock" style="font-size:12px; color:var(--green)"></i>
+                <span>saas-dashboard-xyz.vercel.app</span>
+              </div>
+            </div>
+            <div class="fullpreview-frame" id="fullpreviewFrame">
+              <div class="mock-fullscreen-app">
+                <div class="mock-fs-sidebar">
+                  <div class="mock-fs-logo">
+                    <div class="mock-fs-logo-icon"></div>
+                    <div class="mock-fs-logo-text"></div>
+                  </div>
+                  <div class="mock-fs-nav">
+                    <div class="mock-fs-nav-item active-nav"></div>
+                    <div class="mock-fs-nav-item"></div>
+                    <div class="mock-fs-nav-item"></div>
+                    <div class="mock-fs-nav-item"></div>
+                    <div class="mock-fs-nav-item"></div>
+                  </div>
+                </div>
+                <div class="mock-fs-main">
+                  <div class="mock-fs-header">
+                    <div class="mock-fs-title"></div>
+                    <div class="mock-fs-header-actions">
+                      <div class="mock-fs-btn purple"></div>
+                      <div class="mock-fs-avatar"></div>
+                    </div>
+                  </div>
+                  <div class="mock-fs-stats">
+                    <div class="mock-fs-stat purple"></div>
+                    <div class="mock-fs-stat teal"></div>
+                    <div class="mock-fs-stat amber"></div>
+                    <div class="mock-fs-stat gray"></div>
+                  </div>
+                  <div class="mock-fs-body">
+                    <div class="mock-fs-chart"></div>
+                    <div class="mock-fs-table">
+                      <div class="mock-fs-row header-row"></div>
+                      <div class="mock-fs-row"></div>
+                      <div class="mock-fs-row"></div>
+                      <div class="mock-fs-row"></div>
+                      <div class="mock-fs-row"></div>
+                      <div class="mock-fs-row"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB: ITERATIONS -->
+        <div class="tab-content" id="tab-iterations">
+          <div class="iterations-area">
+            <div class="iterations-header">
+              <h2 class="section-title">Historique des itérations</h2>
+              <span class="iter-count">3 itérations</span>
+            </div>
+            <div class="iterations-list">
+              <div class="iteration-card active-iter">
+                <div class="iter-meta">
+                  <span class="iter-badge current">Actuelle</span>
+                  <span class="iter-time">Il y a 2 min</span>
+                </div>
+                <div class="iter-prompt">"Ajouter un mode sombre et améliorer le tableau"</div>
+                <div class="iter-result">
+                  <span class="result-ok"><i class="ti ti-check"></i> 2 fichiers modifiés</span>
+                  <span class="iter-score"><i class="ti ti-eye"></i> Score visuel : 94%</span>
+                </div>
+                <button class="iter-restore active-restore">Version courante</button>
+              </div>
+              <div class="iteration-card">
+                <div class="iter-meta">
+                  <span class="iter-badge">v2</span>
+                  <span class="iter-time">Il y a 18 min</span>
+                </div>
+                <div class="iter-prompt">"Corriger l'alignement du sidebar et la couleur des boutons"</div>
+                <div class="iter-result">
+                  <span class="result-ok"><i class="ti ti-check"></i> 3 fichiers modifiés</span>
+                  <span class="iter-score"><i class="ti ti-eye"></i> Score visuel : 87%</span>
+                </div>
+                <button class="iter-restore" onclick="restoreIter(this, 'v2')">Restaurer</button>
+              </div>
+              <div class="iteration-card">
+                <div class="iter-meta">
+                  <span class="iter-badge">v1</span>
+                  <span class="iter-time">Il y a 42 min</span>
+                </div>
+                <div class="iter-prompt">"Un dashboard SaaS avec authentification, sidebar, graphiques..."</div>
+                <div class="iter-result">
+                  <span class="result-ok"><i class="ti ti-check"></i> Génération initiale</span>
+                  <span class="iter-score"><i class="ti ti-eye"></i> Score visuel : 72%</span>
+                </div>
+                <button class="iter-restore" onclick="restoreIter(this, 'v1')">Restaurer</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB: DEPLOY -->
+        <div class="tab-content" id="tab-deploy">
+          <div class="deploy-area">
+            <div class="deploy-status-card">
+              <div class="deploy-status-header">
+                <div class="deploy-indicator deployed"></div>
+                <div>
+                  <div class="deploy-status-title">Déployé avec succès</div>
+                  <div class="deploy-status-sub">Dernière mise à jour il y a 2 min</div>
+                </div>
+                <button class="btn-redeploy" onclick="redeploy()"><i class="ti ti-rocket"></i> Redéployer</button>
+              </div>
+              <div class="deploy-url-section">
+                <div class="deploy-url-label">URL de production</div>
+                <div class="deploy-url-value">
+                  <a href="#" class="deploy-link">https://saas-dashboard-xyz.vercel.app</a>
+                  <button class="btn-icon" onclick="copyUrl()"><i class="ti ti-copy"></i></button>
+                </div>
+              </div>
+            </div>
+
+            <div class="deploy-grid">
+              <div class="deploy-info-card">
+                <div class="deploy-info-label"><i class="ti ti-clock"></i> Temps de build</div>
+                <div class="deploy-info-value">28s</div>
+              </div>
+              <div class="deploy-info-card">
+                <div class="deploy-info-label"><i class="ti ti-file"></i> Taille bundle</div>
+                <div class="deploy-info-value">142 KB</div>
+              </div>
+              <div class="deploy-info-card">
+                <div class="deploy-info-label"><i class="ti ti-git-branch"></i> Branch</div>
+                <div class="deploy-info-value">main</div>
+              </div>
+              <div class="deploy-info-card">
+                <div class="deploy-info-label"><i class="ti ti-world"></i> Region</div>
+                <div class="deploy-info-value">cdg1 (Paris)</div>
+              </div>
+            </div>
+
+            <div class="deploy-log-section">
+              <div class="deploy-log-header">Build logs</div>
+              <div class="deploy-log">
+                <div class="log-line"><span class="log-time">00:00</span><span class="log-ok">✓</span> Cloning repository…</div>
+                <div class="log-line"><span class="log-time">00:03</span><span class="log-ok">✓</span> Installing dependencies…</div>
+                <div class="log-line"><span class="log-time">00:12</span><span class="log-ok">✓</span> Building Next.js app…</div>
+                <div class="log-line"><span class="log-time">00:24</span><span class="log-ok">✓</span> Generating static pages…</div>
+                <div class="log-line"><span class="log-time">00:27</span><span class="log-ok">✓</span> Uploading build artifacts…</div>
+                <div class="log-line"><span class="log-time">00:28</span><span class="log-success">🚀 Deployment ready!</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </main>
+    </div>
+  </div>
+
+  <!-- NEW PROJECT MODAL -->
+  <div class="modal-overlay" id="newProjectModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 class="modal-title">Nouveau projet</h3>
+        <button class="modal-close" onclick="closeNewProject()"><i class="ti ti-x"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">Nom du projet</label>
+          <input type="text" class="form-input" placeholder="Mon app incroyable" id="newProjectName" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Type</label>
+          <div class="type-grid">
+            <div class="type-option active-type" onclick="selectType(this)">
+              <i class="ti ti-browser"></i>
+              <span>Web</span>
+            </div>
+            <div class="type-option" onclick="selectType(this)">
+              <i class="ti ti-device-mobile"></i>
+              <span>Mobile</span>
+            </div>
+            <div class="type-option" onclick="selectType(this)">
+              <i class="ti ti-layout-grid"></i>
+              <span>Full-stack</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-cancel" onclick="closeNewProject()">Annuler</button>
+        <button class="btn-create" onclick="createProject()"><i class="ti ti-wand"></i> Créer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST -->
+  <div class="toast" id="toast"></div>
+
+  <!-- AUTH OVERLAY -->
+  <div class="auth-overlay" id="authOverlay">
+    <div class="auth-card">
+      <div class="auth-logo">
+        <span class="logo-icon" style="font-size:28px"><i class="ti ti-wand"></i></span>
+        <span style="font-size:22px;font-weight:600">Genova</span>
+      </div>
+      <p class="auth-sub">Décris ton app. On la construit. Elle se déploie toute seule.</p>
+      <div class="auth-tabs">
+        <button class="auth-tab active" id="authTabLogin" onclick="setAuthMode('login')">Connexion</button>
+        <button class="auth-tab" id="authTabSignup" onclick="setAuthMode('signup')">Inscription</button>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Email</label>
+        <input type="email" class="form-input" id="authEmail" placeholder="toi@exemple.com" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Mot de passe</label>
+        <input type="password" class="form-input" id="authPassword" placeholder="••••••••" />
+      </div>
+      <div class="auth-error" id="authError"></div>
+      <button class="btn-create" style="width:100%;justify-content:center;padding:10px" id="authSubmit" onclick="submitAuth()">
+        Se connecter
+      </button>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
