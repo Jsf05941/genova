@@ -10,6 +10,7 @@ const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
 let currentUser = null
 let currentProject = null
 let authMode = 'login'
+let pendingOtpEmail = ''
 let projects = []
 
 // ============================================
@@ -23,6 +24,7 @@ async function initAuth() {
     onSignedIn()
   } else {
     document.getElementById('authOverlay').classList.remove('hidden')
+    showAuthForm()
   }
   db.auth.onAuthStateChange((event, session) => {
     if (event === 'SIGNED_IN' && session) {
@@ -32,22 +34,64 @@ async function initAuth() {
     if (event === 'SIGNED_OUT') {
       currentUser = null
       document.getElementById('authOverlay').classList.remove('hidden')
+      showAuthForm()
     }
   })
 }
 
 function setAuthMode(mode) {
   authMode = mode
+  showAuthForm()
   document.getElementById('authTabLogin').classList.toggle('active', mode === 'login')
   document.getElementById('authTabSignup').classList.toggle('active', mode === 'signup')
   document.getElementById('authSubmit').textContent = mode === 'login' ? 'Se connecter' : 'Créer mon compte'
+  document.getElementById('authError').style.color = 'var(--red)'
   document.getElementById('authError').textContent = ''
 }
 
+function showAuthForm() {
+  const authForm = document.getElementById('authFormView')
+  const otpForm = document.getElementById('otpFormView')
+  const subtitle = document.getElementById('authSubtitle')
+  if (authForm) authForm.classList.remove('hidden')
+  if (otpForm) otpForm.classList.add('hidden')
+  if (subtitle) subtitle.textContent = 'Décris ton app. On la construit. Elle se déploie toute seule.'
+}
+
+function showOtpForm(email) {
+  pendingOtpEmail = email
+  const authForm = document.getElementById('authFormView')
+  const otpForm = document.getElementById('otpFormView')
+  const label = document.getElementById('otpEmailLabel')
+  const subtitle = document.getElementById('authSubtitle')
+  const otpInput = document.getElementById('otpCode')
+  const otpError = document.getElementById('otpError')
+
+  if (authForm) authForm.classList.add('hidden')
+  if (otpForm) otpForm.classList.remove('hidden')
+  if (label) label.textContent = email
+  if (subtitle) subtitle.textContent = 'Vérification de sécurité'
+  if (otpInput) {
+    otpInput.value = ''
+    setTimeout(() => otpInput.focus(), 80)
+  }
+  if (otpError) {
+    otpError.style.color = 'var(--text2)'
+    otpError.textContent = 'Le code expire après quelques minutes.'
+  }
+}
+
+function backToAuthForm() {
+  pendingOtpEmail = ''
+  showAuthForm()
+  setAuthMode(authMode)
+}
+
 async function submitAuth() {
-  const email = document.getElementById('authEmail').value.trim()
+  const email = document.getElementById('authEmail').value.trim().toLowerCase()
   const password = document.getElementById('authPassword').value
   const errorEl = document.getElementById('authError')
+  errorEl.style.color = 'var(--red)'
   errorEl.textContent = ''
 
   if (!email || !password) {
@@ -63,25 +107,115 @@ async function submitAuth() {
     let result
     if (authMode === 'signup') {
       result = await db.auth.signUp({ email, password })
-      if (!result.error && result.data.user && !result.data.session) {
-        errorEl.style.color = 'var(--teal-light)'
-        errorEl.textContent = 'Compte créé ! Vérifie ton email pour confirmer.'
-        btn.disabled = false
-        btn.textContent = 'Créer mon compte'
-        return
+      if (result.error) {
+        errorEl.style.color = 'var(--red)'
+        errorEl.textContent = traduireErreur(result.error.message)
+      } else if (result.data.session) {
+        currentUser = result.data.user
+        onSignedIn()
+      } else {
+        showOtpForm(email)
+        showToast('Code de confirmation envoyé')
       }
     } else {
       result = await db.auth.signInWithPassword({ email, password })
-    }
-    if (result.error) {
-      errorEl.style.color = 'var(--red)'
-      errorEl.textContent = traduireErreur(result.error.message)
+      if (result.error) {
+        errorEl.style.color = 'var(--red)'
+        errorEl.textContent = traduireErreur(result.error.message)
+      }
     }
   } catch (e) {
     errorEl.textContent = 'Erreur de connexion au serveur.'
+    console.error(e)
   }
+
   btn.disabled = false
-  setAuthMode(authMode)
+  btn.textContent = authMode === 'login' ? 'Se connecter' : 'Créer mon compte'
+}
+
+async function verifyOtpCode() {
+  const code = document.getElementById('otpCode').value.replace(/\D/g, '').slice(0, 6)
+  const errorEl = document.getElementById('otpError')
+  const btn = document.getElementById('otpSubmit')
+
+  errorEl.style.color = 'var(--red)'
+  errorEl.textContent = ''
+
+  if (!pendingOtpEmail) {
+    errorEl.textContent = 'Email introuvable. Recommence l’inscription.'
+    return
+  }
+  if (code.length !== 6) {
+    errorEl.textContent = 'Entre le code à 6 chiffres.'
+    return
+  }
+
+  btn.disabled = true
+  btn.textContent = 'Vérification...'
+
+  try {
+    const { data, error } = await db.auth.verifyOtp({
+      email: pendingOtpEmail,
+      token: code,
+      type: 'signup'
+    })
+
+    if (error) {
+      errorEl.style.color = 'var(--red)'
+      errorEl.textContent = traduireErreur(error.message)
+    } else if (data.session) {
+      currentUser = data.user
+      pendingOtpEmail = ''
+      showToast('Email confirmé. Bienvenue sur Genova !')
+      onSignedIn()
+    } else {
+      errorEl.style.color = 'var(--teal-light)'
+      errorEl.textContent = 'Email confirmé. Tu peux maintenant te connecter.'
+      setTimeout(() => backToAuthForm(), 1200)
+    }
+  } catch (e) {
+    errorEl.textContent = 'Impossible de vérifier le code.'
+    console.error(e)
+  }
+
+  btn.disabled = false
+  btn.textContent = 'Vérifier le code'
+}
+
+async function resendOtpCode() {
+  const errorEl = document.getElementById('otpError')
+  const btn = document.getElementById('otpResend')
+
+  if (!pendingOtpEmail) {
+    errorEl.style.color = 'var(--red)'
+    errorEl.textContent = 'Email introuvable. Recommence l’inscription.'
+    return
+  }
+
+  btn.disabled = true
+  btn.textContent = 'Envoi...'
+
+  try {
+    const { error } = await db.auth.resend({
+      type: 'signup',
+      email: pendingOtpEmail
+    })
+    if (error) {
+      errorEl.style.color = 'var(--red)'
+      errorEl.textContent = traduireErreur(error.message)
+    } else {
+      errorEl.style.color = 'var(--teal-light)'
+      errorEl.textContent = 'Nouveau code envoyé.'
+      showToast('Nouveau code envoyé')
+    }
+  } catch (e) {
+    errorEl.style.color = 'var(--red)'
+    errorEl.textContent = 'Impossible de renvoyer le code.'
+    console.error(e)
+  }
+
+  btn.disabled = false
+  btn.textContent = 'Renvoyer le code'
 }
 
 function traduireErreur(msg) {
@@ -89,7 +223,11 @@ function traduireErreur(msg) {
     'Invalid login credentials': 'Email ou mot de passe incorrect.',
     'User already registered': 'Un compte existe déjà avec cet email.',
     'Password should be at least 6 characters.': 'Le mot de passe doit faire au moins 6 caractères.',
-    'Email not confirmed': 'Confirme ton email avant de te connecter.'
+    'Email not confirmed': 'Confirme ton email avant de te connecter.',
+    'Token has expired or is invalid': 'Le code est expiré ou incorrect.',
+    'Email rate limit exceeded': 'Trop de demandes. Attends un peu avant de renvoyer un code.',
+    'Signup requires a valid password': 'Le mot de passe n’est pas valide.',
+    'Unable to validate email address: invalid format': 'Format d’email invalide.'
   }
   return map[msg] || msg
 }
@@ -143,7 +281,7 @@ function renderSidebar() {
   }
 
   const icons = { web: 'ti-browser', mobile: 'ti-device-mobile', fullstack: 'ti-layout-grid' }
-  const dots = { deployed: 'green', building: 'amber', draft: 'gray', failed: 'gray' }
+  const dots = { deployed: 'green', building: 'amber', planning: 'amber', coding: 'amber', capturing: 'amber', analyzing: 'amber', deploying: 'amber', draft: 'gray', failed: 'gray' }
 
   projects.forEach(p => {
     const item = document.createElement('div')
@@ -165,7 +303,17 @@ function setCurrentProject(p) {
   currentProject = p
   document.getElementById('projectName').textContent = p.name
   const badge = document.querySelector('.project-badge')
-  const labels = { deployed: 'Déployé', building: 'En cours', draft: 'Brouillon', failed: 'Échec' }
+  const labels = {
+    deployed: 'Déployé',
+    building: 'En cours',
+    planning: 'Planification',
+    coding: 'Code',
+    capturing: 'Capture',
+    analyzing: 'Vision',
+    deploying: 'Déploiement',
+    draft: 'Brouillon',
+    failed: 'Échec'
+  }
   badge.textContent = labels[p.status] || p.status
   badge.className = 'project-badge' + (p.status === 'deployed' ? ' deployed' : '')
   document.getElementById('deployUrl').textContent = p.deploy_url || 'pas encore déployé'
@@ -256,7 +404,7 @@ let genRunning = false
 async function startGeneration() {
   if (genRunning) return
   if (!currentProject) {
-    showToast('Crée ou sélectionne un projet d\u2019abord')
+    showToast('Crée ou sélectionne un projet d’abord')
     return
   }
   const prompt = document.getElementById('promptInput').value.trim()
@@ -276,6 +424,7 @@ async function startGeneration() {
     .from('iterations')
     .insert({
       project_id: currentProject.id,
+      owner_id: currentUser.id,
       version: nextVersion,
       prompt: prompt,
       status: 'pending'
@@ -284,7 +433,7 @@ async function startGeneration() {
     .single()
 
   if (error) {
-    showToast('Erreur : impossible de créer l\u2019itération')
+    showToast('Erreur : impossible de créer l’itération')
     console.error(error)
     genRunning = false
     btn.classList.remove('running')
@@ -292,9 +441,8 @@ async function startGeneration() {
     return
   }
 
-  // Met le projet en "building"
   await db.from('projects')
-    .update({ status: 'building', initial_prompt: currentProject.initial_prompt || prompt })
+    .update({ status: 'planning', initial_prompt: currentProject.initial_prompt || prompt })
     .eq('id', currentProject.id)
 
   const dot = document.getElementById('pipelineDot')
@@ -318,7 +466,7 @@ async function startGeneration() {
       // Fin du pipeline : score visuel simulé + statuts finaux
       const score = 70 + Math.round(Math.random() * 28)
       await db.from('iterations')
-        .update({ status: 'done', visual_score: score, files_changed: 2 + Math.floor(Math.random() * 4) })
+        .update({ status: 'done', visual_score: score, files_changed: 2 + Math.floor(Math.random() * 4), completed_at: new Date().toISOString() })
         .eq('id', iteration.id)
       await db.from('projects')
         .update({ status: 'deployed' })
@@ -338,7 +486,11 @@ async function startGeneration() {
     const el = document.getElementById('step-' + steps[i])
     if (el) el.dataset.state = 'active'
     label.textContent = stepLabels[i]
-    await db.from('iterations').update({ status: stepStatuses[i] }).eq('id', iteration.id)
+    const status = stepStatuses[i]
+    await db.from('iterations').update({ status, started_at: i === 0 ? new Date().toISOString() : iteration.started_at }).eq('id', iteration.id)
+    await db.from('projects').update({ status }).eq('id', currentProject.id)
+    currentProject.status = status
+    renderSidebar()
     i++
     setTimeout(runStep, 1400)
   }
@@ -432,14 +584,14 @@ function showToast(msg) {
 
 function copyUrl() {
   const url = currentProject && currentProject.deploy_url
-  if (!url) { showToast('Pas encore d\u2019URL de déploiement'); return }
+  if (!url) { showToast('Pas encore d’URL de déploiement'); return }
   navigator.clipboard?.writeText(url).catch(() => {})
   showToast('URL copiée !')
 }
 function openUrl() {
   const url = currentProject && currentProject.deploy_url
   if (url) window.open(url, '_blank')
-  else showToast('Pas encore d\u2019URL de déploiement')
+  else showToast('Pas encore d’URL de déploiement')
 }
 function toggleFullscreen() { showToast('Plein écran non disponible en aperçu') }
 
@@ -450,7 +602,7 @@ function escapeHtml(s) {
 function formatDate(iso) {
   const d = new Date(iso)
   const diff = (Date.now() - d.getTime()) / 1000
-  if (diff < 60) return 'À l\u2019instant'
+  if (diff < 60) return 'À l’instant'
   if (diff < 3600) return `Il y a ${Math.floor(diff / 60)} min`
   if (diff < 86400) return `Il y a ${Math.floor(diff / 3600)} h`
   return d.toLocaleDateString('fr-CA')
@@ -461,11 +613,24 @@ function formatDate(iso) {
 // ============================================
 
 document.addEventListener('keydown', e => {
+  const overlay = document.getElementById('authOverlay')
+  const authVisible = overlay && !overlay.classList.contains('hidden')
+  const otpVisible = document.getElementById('otpFormView') && !document.getElementById('otpFormView').classList.contains('hidden')
+
   if (e.key === 'Escape') closeNewProject()
-  if (e.key === 'Enter' && !document.getElementById('authOverlay').classList.contains('hidden')) {
-    submitAuth()
+  if (e.key === 'Enter' && authVisible) {
+    if (otpVisible) verifyOtpCode()
+    else submitAuth()
   }
 })
+
+document.addEventListener('input', e => {
+  if (e.target && e.target.id === 'otpCode') {
+    e.target.value = e.target.value.replace(/\D/g, '').slice(0, 6)
+    if (e.target.value.length === 6) verifyOtpCode()
+  }
+})
+
 document.getElementById('newProjectModal').addEventListener('click', e => {
   if (e.target === e.currentTarget) closeNewProject()
 })
