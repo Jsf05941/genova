@@ -7,12 +7,37 @@
     document.head.appendChild(link);
   }
 
+  function getProjectId(){
+    if(window.currentProject&&window.currentProject.id) return window.currentProject.id;
+    var active=document.querySelector('.project-item.active');
+    return active&&active.dataset?active.dataset.projectId:null;
+  }
+
+  function showPreview(){
+    var mount=document.getElementById('previewWeb');
+    if(!mount) return;
+    var projectId=getProjectId();
+    mount.innerHTML='';
+    if(!projectId){
+      var empty=document.createElement('div');
+      empty.className='agent-empty';
+      empty.textContent='Select a project to preview the generated app.';
+      mount.appendChild(empty);
+      return;
+    }
+    var frame=document.createElement('iframe');
+    frame.className='generated-preview-frame';
+    frame.src=window.GENOVA_CONFIG.SUPABASE_URL+'/functions/v1/render-preview?project_id='+encodeURIComponent(projectId);
+    mount.appendChild(frame);
+  }
+
   function setView(view){
     document.body.classList.remove('agent-preview-mode','agent-code-mode','agent-deploy-mode');
     if(view==='preview'){
       document.body.classList.add('agent-preview-mode');
       var previewTab=document.querySelector('.preview-tab');
       if(previewTab) previewTab.click();
+      showPreview();
     }
     if(view==='code'){
       document.body.classList.add('agent-code-mode');
@@ -51,6 +76,7 @@
     loadCss();
     window.setAgentView=setView;
     window.ensureAgentControls=ensureControls;
+    window.showGenovaPreview=showPreview;
 
     var wait=setInterval(function(){
       if(typeof window.openAgentPanel==='function'){
