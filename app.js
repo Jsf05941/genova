@@ -2,8 +2,11 @@
 // GENOVA — Frontend connecté à Supabase
 // ============================================
 
-const SUPABASE_URL = 'https://vpgxehgsxeimohtnuylf.supabase.co'
-const SUPABASE_KEY = 'sb_publishable_coyGpSOYxI5ha5MsR1iPtw_gaKDHl0W'
+const SUPABASE_URL = window.GENOVA_CONFIG?.SUPABASE_URL
+const SUPABASE_KEY = window.GENOVA_CONFIG?.SUPABASE_KEY
+if (!SUPABASE_URL || !SUPABASE_KEY) {
+  throw new Error('Missing Genova frontend configuration.')
+}
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
 
 let currentUser = null
